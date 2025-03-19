@@ -1,0 +1,7 @@
+<h1>Görsellerim</h1>
+{% for photo in photos %}
+    <img src="{{ photo.image.url }}" alt="Photo" width="200">
+{% empty %}
+    <p>Henüz görsel yüklemediniz.</p>
+{% endfor %}
+<a href="{% url 'upload_photo' %}">Yeni Görsel Yükle</a>
