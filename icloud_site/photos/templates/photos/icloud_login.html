@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>iCloud ile Giriş Yap</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <p class="{% if 'success' in message.tags %}success{% else %}error{% endif %}">{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Giriş Yap</button>
+    </form>
+    <a href="{% url 'photo_list' %}"><button>Geri Dön</button></a>
+</body>
+</html>

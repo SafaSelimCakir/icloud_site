@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>İki Faktörlü Kimlik Doğrulama</h1>
+    <p>Lütfen iCloud hesabınıza gönderilen 6 haneli doğrulama kodunu girin.</p>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        <input type="text" name="code" placeholder="Doğrulama Kodu" required>
+        <button type="submit">Doğrula</button>
+    </form>
+</body>
+</html>

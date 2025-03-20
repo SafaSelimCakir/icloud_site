@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .success { color: green; }
+        .warning { color: red; }
+    </style>
+</head>
+<body>
+    <h1>iCloud Fotoğraflarınızı Seçin</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        {% for photo in photos %}
+            <div>
+                <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
+                {{ photo.filename }} ({{ photo.size }} bayt)
+            </div>
+        {% empty %}
+            <p>iCloud'da fotoğraf bulunamadı.</p>
+        {% endfor %}
+        {% if photos %}
+            <button type="submit">Seçilenleri Ekle</button>
+        {% endif %}
+    </form>
+    <a href="{% url 'photo_list' %}">Geri Dön</a>
+</body>
+</html>

@@ -1,7 +1,39 @@
-<h1>Görsellerim</h1>
-{% for photo in photos %}
-    <img src="{{ photo.image.url }}" alt="Photo" width="200">
-{% empty %}
-    <p>Henüz görsel yüklemediniz.</p>
-{% endfor %}
-<a href="{% url 'upload_photo' %}">Yeni Görsel Yükle</a>
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .success { color: green; }
+        .warning { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Görsellerim</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+    <form method="post" action="{% url 'delete_photos' %}">
+        {% csrf_token %}
+        {% for photo in photos %}
+            <div>
+                <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
+                <img src="{{ photo.image.url }}" alt="Photo" width="200">
+            </div>
+        {% empty %}
+            <p>Henüz görsel yüklemediniz.</p>
+        {% endfor %}
+        {% if photos %}
+            <button type="submit">Seçilenleri Sil</button>
+        {% endif %}
+    </form>
+    {% if photos %}
+        <form method="post" action="{% url 'delete_all_photos' %}" onsubmit="return confirm('Tüm fotoğraflarınızı silmek istediğinize emin misiniz?');">
+            {% csrf_token %}
+            <button type="submit">Tümünü Sil</button>
+        </form>
+    {% endif %}
+    <a href="{% url 'upload_photo' %}">Yeni Görsel Yükle</a>
+    <a href="{% url 'icloud_login' %}">iCloud'dan Çek</a>
+</body>
+</html>
