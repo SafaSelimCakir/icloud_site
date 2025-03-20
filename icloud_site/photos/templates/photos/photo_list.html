@@ -4,6 +4,8 @@
     <style>
         .success { color: green; }
         .warning { color: red; }
+        .thumbnail { max-width: 100px; }
+        .filter-form { margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -13,27 +15,49 @@
             <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
         {% endfor %}
     {% endif %}
+    
+    <!-- Filtreleme Formu -->
+    <form class="filter-form" method="get">
+        <label for="filter">Filtrele:</label>
+        <select name="filter" id="filter" onchange="this.form.submit()">
+            <option value="all" {% if current_filter == 'all' %}selected{% endif %}>Hepsi</option>
+            <option value="images" {% if current_filter == 'images' %}selected{% endif %}>Sadece Resimler</option>
+            <option value="videos" {% if current_filter == 'videos' %}selected{% endif %}>Sadece Videolar</option>
+        </select>
+    </form>
+    
+    <!-- Fotoğraf Listesi -->
     <form method="post" action="{% url 'delete_photos' %}">
         {% csrf_token %}
-        {% for photo in photos %}
+        {% for photo in page_obj %}
             <div>
                 <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
-                <img src="{{ photo.image.url }}" alt="Photo" width="200">
+                {% if photo.thumbnail %}
+                    <img src="{{ photo.thumbnail }}" class="thumbnail" alt="{{ photo.filename }}">
+                {% else %}
+                    <span>[Önizleme Yok]</span>
+                {% endif %}
+                <span>{{ photo.filename }} ({{ photo.size }} bayt)</span>
             </div>
         {% empty %}
-            <p>Henüz görsel yüklemediniz.</p>
+            <p>Seçilen filtreye uygun dosya bulunamadı.</p>
         {% endfor %}
-        {% if photos %}
+        {% if page_obj %}
             <button type="submit">Seçilenleri Sil</button>
+            <a href="{% url 'delete_all_photos' %}" onclick="return confirm('Tüm fotoğrafları silmek istediğinizden emin misiniz?');">Tümünü Sil</a>
         {% endif %}
     </form>
-    {% if photos %}
-        <form method="post" action="{% url 'delete_all_photos' %}" onsubmit="return confirm('Tüm fotoğraflarınızı silmek istediğinize emin misiniz?');">
-            {% csrf_token %}
-            <button type="submit">Tümünü Sil</button>
-        </form>
-    {% endif %}
-    <a href="{% url 'upload_photo' %}">Yeni Görsel Yükle</a>
-    <a href="{% url 'icloud_login' %}">iCloud'dan Çek</a>
+    
+    <!-- Sayfalamayı ekle -->
+    <div>
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}&filter={{ current_filter }}">Önceki</a>
+        {% endif %}
+        <span>Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&filter={{ current_filter }}">Sonraki</a>
+        {% endif %}
+    </div>
+    <a href="{% url 'icloud_select_photos' %}">iCloud'dan Ekle</a>
 </body>
 </html>

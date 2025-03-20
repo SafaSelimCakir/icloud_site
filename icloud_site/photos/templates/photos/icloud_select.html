@@ -4,6 +4,8 @@
     <style>
         .success { color: green; }
         .warning { color: red; }
+        .thumbnail { max-width: 100px; }
+        .filter-form { margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -13,20 +15,48 @@
             <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
         {% endfor %}
     {% endif %}
+    
+    <!-- Filtreleme Formu -->
+    <form class="filter-form" method="get">
+        <label for="filter">Filtrele:</label>
+        <select name="filter" id="filter" onchange="this.form.submit()">
+            <option value="all" {% if current_filter == 'all' %}selected{% endif %}>Hepsi</option>
+            <option value="images" {% if current_filter == 'images' %}selected{% endif %}>Sadece Resimler</option>
+            <option value="videos" {% if current_filter == 'videos' %}selected{% endif %}>Sadece Videolar</option>
+        </select>
+    </form>
+    
+    <!-- Fotoğraf Seçim Formu -->
     <form method="post">
         {% csrf_token %}
-        {% for photo in photos %}
+        {% for photo in page_obj %}
             <div>
                 <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
-                {{ photo.filename }} ({{ photo.size }} bayt)
+                {% if photo.thumbnail %}
+                    <img src="{{ photo.thumbnail }}" class="thumbnail" alt="{{ photo.filename }}">
+                {% else %}
+                    <span>[Önizleme Yok]</span>
+                {% endif %}
+                <span>{{ photo.filename }} ({{ photo.size }} bayt)</span>
             </div>
         {% empty %}
-            <p>iCloud'da fotoğraf bulunamadı.</p>
+            <p>Seçilen filtreye uygun dosya bulunamadı.</p>
         {% endfor %}
-        {% if photos %}
+        {% if page_obj %}
             <button type="submit">Seçilenleri Ekle</button>
         {% endif %}
     </form>
+    
+    <!-- Sayfalamayı ekle -->
+    <div>
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}&filter={{ current_filter }}">Önceki</a>
+        {% endif %}
+        <span>Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&filter={{ current_filter }}">Sonraki</a>
+        {% endif %}
+    </div>
     <a href="{% url 'photo_list' %}">Geri Dön</a>
 </body>
 </html>
