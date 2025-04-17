@@ -9,4 +9,5 @@ urlpatterns = [
     path('icloud/select/', views.icloud_select_photos, name='icloud_select_photos'),
     path('delete/', views.delete_photos, name='delete_photos'),
     path('delete-all/', views.delete_all_photos, name='delete_all_photos'),
+    path('delete-account/', views.delete_account, name='delete_account'),
 ]

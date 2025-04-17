@@ -1,15 +1,35 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <style>
+        .success { color: green; }
+        .warning { color: red; }
+    </style>
+</head>
 <body>
-    <h1>İki Faktörlü Kimlik Doğrulama</h1>
-    <p>Lütfen iCloud hesabınıza gönderilen 6 haneli doğrulama kodunu girin.</p>
-    {% if error %}
-        <p style="color: red;">{{ error }}</p>
+    <h1>iCloud İki Faktörlü Doğrulama</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
+        {% endfor %}
     {% endif %}
+    {% if devices %}
+        <p>Lütfen doğrulama kodunu almak için bir cihaz seçin:</p>
+        <form method="post">
+            {% csrf_token %}
+            {% for device in devices %}
+                <input type="radio" name="device_index" value="{{ forloop.counter0 }}" required>
+                {{ device.deviceName|default:"Bilinmeyen cihaz" }} ({{ device.phoneNumber|default:"Numara belirtilmemiş" }})<br>
+            {% endfor %}
+            <button type="submit">Cihaz Seç ve Kod Gönder</button>
+        </form>
+    {% endif %}
+    <p>iCloud hesabınız için iki faktörlü doğrulama gerekiyor. Lütfen cihazınızda görünen 6 haneli doğrulama kodunu girin.</p>
     <form method="post">
         {% csrf_token %}
-        <input type="text" name="code" placeholder="Doğrulama Kodu" required>
-        <button type="submit">Doğrula</button>
+        <input type="text" name="2fa_code" placeholder="6 haneli kod" required>
+        <button type="submit">Kodu Gönder</button>
     </form>
+    <a href="{% url 'icloud_login' %}">Geri Dön</a>
 </body>
 </html>

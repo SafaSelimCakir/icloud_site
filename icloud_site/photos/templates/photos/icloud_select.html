@@ -4,59 +4,58 @@
     <style>
         .success { color: green; }
         .warning { color: red; }
-        .thumbnail { max-width: 100px; }
-        .filter-form { margin-bottom: 20px; }
+        .photo-container { display: flex; flex-wrap: wrap; gap: 10px; }
+        .photo-item { text-align: center; }
+        img { max-width: 100px; max-height: 100px; object-fit: cover; }
+        .video-icon { color: blue; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>iCloud Fotoğraflarınızı Seçin</h1>
+    <h1>iCloud Medya Dosyaları</h1>
     {% if messages %}
         {% for message in messages %}
             <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
         {% endfor %}
     {% endif %}
-    
-    <!-- Filtreleme Formu -->
-    <form class="filter-form" method="get">
-        <label for="filter">Filtrele:</label>
-        <select name="filter" id="filter" onchange="this.form.submit()">
-            <option value="all" {% if current_filter == 'all' %}selected{% endif %}>Hepsi</option>
-            <option value="images" {% if current_filter == 'images' %}selected{% endif %}>Sadece Resimler</option>
-            <option value="videos" {% if current_filter == 'videos' %}selected{% endif %}>Sadece Videolar</option>
-        </select>
-    </form>
-    
-    <!-- Fotoğraf Seçim Formu -->
+    <p>Toplam {{ total_photos }} medya dosyası bulundu.</p>
     <form method="post">
         {% csrf_token %}
-        {% for photo in page_obj %}
-            <div>
-                <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
-                {% if photo.thumbnail %}
-                    <img src="{{ photo.thumbnail }}" class="thumbnail" alt="{{ photo.filename }}">
-                {% else %}
-                    <span>[Önizleme Yok]</span>
-                {% endif %}
-                <span>{{ photo.filename }} ({{ photo.size }} bayt)</span>
-            </div>
-        {% empty %}
-            <p>Seçilen filtreye uygun dosya bulunamadı.</p>
-        {% endfor %}
-        {% if page_obj %}
+        <div class="photo-container">
+            {% for photo in photos %}
+                <div class="photo-item">
+                    <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
+                    {% if photo.thumbnail %}
+                        <img src="{{ photo.thumbnail }}" alt="{{ photo.filename }}" loading="lazy">
+                    {% else %}
+                        <p>Thumbnail yüklenemedi</p>
+                    {% endif %}
+                    <p>
+                        {% if photo.is_video %}
+                            <span class="video-icon">[Video]</span>
+                        {% endif %}
+                        {{ photo.filename }}
+                    </p>
+                </div>
+            {% empty %}
+                <p>Bu sayfada medya dosyası bulunamadı.</p>
+            {% endfor %}
+        </div>
+        {% if photos %}
             <button type="submit">Seçilenleri Ekle</button>
         {% endif %}
     </form>
     
-    <!-- Sayfalamayı ekle -->
+    <!-- Sayfalı yükleme bağlantıları -->
     <div>
-        {% if page_obj.has_previous %}
-            <a href="?page={{ page_obj.previous_page_number }}&filter={{ current_filter }}">Önceki</a>
+        {% if current_page > 1 %}
+            <a href="?page={{ current_page|add:-1 }}">Önceki Sayfa</a>
         {% endif %}
-        <span>Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-        {% if page_obj.has_next %}
-            <a href="?page={{ page_obj.next_page_number }}&filter={{ current_filter }}">Sonraki</a>
+        <span>Sayfa {{ current_page }} / {{ total_pages }}</span>
+        {% if current_page < total_pages %}
+            <a href="?page={{ current_page|add:1 }}">Sonraki Sayfa</a>
         {% endif %}
     </div>
+    
     <a href="{% url 'photo_list' %}">Geri Dön</a>
 </body>
 </html>

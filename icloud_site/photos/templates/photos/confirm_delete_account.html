@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .success { color: green; }
+        .warning { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Hesabı Sil</h1>
+    <p>Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz ve tüm fotoğraflarınız silinecektir.</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit">Evet, Hesabı Sil</button>
+    </form>
+    <a href="{% url 'photo_list' %}">İptal</a>
+</body>
+</html>

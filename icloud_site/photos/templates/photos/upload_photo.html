@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .success { color: green; }
+        .warning { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Yeni Görsel Yükle</h1>
+    {% if messages %}
+        {% for message in messages %}
+            <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Yükle</button>
+    </form>
+    <a href="{% url 'photo_list' %}">Geri Dön</a>
+</body>
+</html>
