@@ -1,49 +1,41 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        .success { color: green; }
-        .warning { color: red; }
-    </style>
-</head>
-<body>
-    <h1>Görsellerim</h1>
+{% extends 'photos/base.html' %}
+{% block content %}
+    <h2>Fotoğraflarınız</h2>
     {% if messages %}
-        {% for message in messages %}
-            <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
-        {% endfor %}
-    {% endif %}
-    <form method="post" action="{% url 'delete_photos' %}" id="photo-form">
-        {% csrf_token %}
-        <div id="photo-container">
-            {% for photo in photos %}
-                <div>
-                    <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
-                    <img src="{{ photo.image.url }}" alt="Photo" width="200">
-                </div>
-            {% empty %}
-                <p>Henüz görsel yüklemediniz.</p>
+        <ul class="messages">
+            {% for message in messages %}
+                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
             {% endfor %}
-        </div>
-        {% if photos %}
-            <button type="submit">Seçilenleri Sil</button>
-            <button type="button" onclick="deleteAllPhotos()">Tümünü Sil</button>
-        {% endif %}
-    </form>
-    <a href="{% url 'upload_photo' %}">Yeni Görsel Yükle</a>
-    <a href="{% url 'icloud_login' %}">iCloud'dan Çek</a>
-    <form method="post" action="{% url 'logout' %}" style="display: inline;">
-        {% csrf_token %}
-        <button type="submit">Çıkış Yap</button>
-    </form>
-    <a href="{% url 'delete_account' %}">Hesabı Sil</a>
-
-    <script>
-        function deleteAllPhotos() {
-            if (confirm('Tüm fotoğraflarınızı silmek istediğinize emin misiniz?')) {
-                window.location.href = "{% url 'delete_all_photos' %}";
-            }
-        }
-    </script>
-</body>
-</html>
+        </ul>
+    {% endif %}
+    {% if photos %}
+        <form method="post" action="{% url 'delete_photos' %}">
+            {% csrf_token %}
+            <table>
+                <tr>
+                    <th>Seç</th>
+                    <th>Önizleme</th>
+                    <th>Dosya Adı</th>
+                    <th>İşlemler</th>
+                </tr>
+                {% for photo in photos %}
+                    <tr>
+                        <td><input type="checkbox" name="photo_ids" value="{{ photo.id }}"></td>
+                        <td><img src="{{ photo.image.url }}" alt="{{ photo.image.name }}" style="max-width: 100px; max-height: 100px;"></td>
+                        <td>{{ photo.image.name }}</td>
+                        <td>
+                            <a href="{% url 'download_photo' photo.id %}" class="btn btn-primary">İndir</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
+            <button type="submit" class="btn btn-danger">Seçilenleri Sil</button>
+            <a href="{% url 'delete_all_photos' %}" class="btn btn-danger">Tüm Fotoğrafları Sil</a>
+            <a href="{% url 'delete_account' %}" class="btn btn-danger">Hesabı Sil</a>
+        </form>
+    {% else %}
+        <p>Henüz fotoğraf yüklemediniz.</p>
+    {% endif %}
+    <a href="{% url 'icloud_login' %}" class="btn btn-primary">iCloud'dan Fotoğraf Yükle</a>
+    <a href="{% url 'upload_photo' %}" class="btn btn-primary">Fotoğraf Yükle</a>
+{% endblock %}

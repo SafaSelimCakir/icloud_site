@@ -1,23 +1,26 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from pyicloud import PyiCloudService
-from .forms import ICloudLoginForm, PhotoUploadForm
-from .models import Photo
-from django.core.files.base import ContentFile
 from django.contrib import messages
-from PIL import Image
-import io
-import os
-from requests.exceptions import ChunkedEncodingError, ConnectionError
-from django.contrib.auth import logout
+from django.http import FileResponse, HttpResponse
+from .models import Photo
+from .forms import ICloudLoginForm, PhotoUploadForm
+from pyicloud import PyiCloudService
 from pyicloud.exceptions import PyiCloudFailedLoginException, PyiCloudServiceNotActivatedException
+from django.core.files.base import ContentFile
+from PIL import Image
+from pillow_heif import register_heif_opener
+import os
+import io
+import logging
+import mimetypes
 import time
 import requests
-from pillow_heif import register_heif_opener
-from moviepy.editor import VideoFileClip
-import mimetypes
+from requests.exceptions import ChunkedEncodingError
+from moviepy import VideoFileClip
+import tempfile
 
-# HEIC formatı desteği
+logger = logging.getLogger(__name__)
+
 register_heif_opener()
 
 @login_required
@@ -30,16 +33,63 @@ def icloud_login(request):
     if request.method == 'POST':
         form = ICloudLoginForm(request.POST)
         if form.is_valid():
-            request.session['icloud_credentials'] = {
-                'apple_id': form.cleaned_data['apple_id'],
-                'password': form.cleaned_data['password']
-            }
+            apple_id = form.cleaned_data['apple_id']
+            password = form.cleaned_data['password']
+            request.session['icloud_credentials'] = {'apple_id': apple_id, 'password': password}
             return redirect('icloud_select_photos')
     else:
         form = ICloudLoginForm()
     return render(request, 'photos/icloud_login.html', {'form': form})
 
-egister_heif_opener()
+@login_required
+def icloud_2fa(request):
+    if 'icloud_credentials' not in request.session:
+        messages.error(request, "Lütfen iCloud hesabınızla giriş yapın.")
+        return redirect('icloud_login')
+    
+    apple_id = request.session['icloud_credentials']['apple_id']
+    password = request.session['icloud_credentials']['password']
+    
+    try:
+        api = PyiCloudService(apple_id, password)
+        if not (api.requires_2fa or api.requires_2sa):
+            return redirect('icloud_select_photos')
+        
+        if request.method == 'POST':
+            code = request.POST.get('code')
+            if code:
+                try:
+                    if api.requires_2fa:
+                        result = api.validate_2fa_code(code)
+                    else:
+                        result = api.validate_verification_code(None, code)
+                    if result:
+                        request.session['2fa_code'] = code
+                        messages.success(request, "2FA doğrulama başarılı.")
+                        return redirect('icloud_select_photos')
+                    else:
+                        messages.error(request, "Geçersiz doğrulama kodu. Lütfen tekrar deneyin.")
+                except Exception as e:
+                    messages.error(request, f"Doğrulama hatası: {str(e)}")
+                    logger.error(f"2FA verification error: {str(e)}")
+            else:
+                messages.error(request, "Lütfen doğrulama kodunu girin.")
+        
+        if api.requires_2fa:
+            api.send_verification_code()
+            messages.info(request, "Doğrulama kodu Apple cihazlarınıza gönderildi.")
+        return render(request, 'photos/icloud_2fa.html')
+    
+    except PyiCloudFailedLoginException as e:
+        messages.error(request, f"iCloud giriş bilgileri hatalı: {str(e)}. Lütfen tekrar deneyin.")
+        del request.session['icloud_credentials']
+        logger.error(f"iCloud login failed: {str(e)}")
+        return redirect('icloud_login')
+    except Exception as e:
+        messages.error(request, f"Bir hata oluştu: {str(e)}. Lütfen tekrar deneyin.")
+        del request.session['icloud_credentials']
+        logger.error(f"Unexpected error: {type(e).__name__}: {str(e)}")
+        return redirect('icloud_login')
 
 @login_required
 def icloud_select_photos(request):
@@ -51,8 +101,9 @@ def icloud_select_photos(request):
     password = request.session['icloud_credentials']['password']
     
     max_retries = 3
-    retry_delay = 5  # saniye
-    photos_per_page = 20  # Her sayfada gösterilecek medya sayısı
+    retry_delay = 5  # seconds
+    photos_per_page = 20  # Media items per page
+    download_retries = 2  # Retry attempts for thumbnail downloads
     
     page = int(request.GET.get('page', 1))
     start_index = (page - 1) * photos_per_page
@@ -60,17 +111,17 @@ def icloud_select_photos(request):
     
     for attempt in range(max_retries):
         try:
-            print(f"iCloud bağlantısı deneniyor (Deneme {attempt + 1}/{max_retries})...")
+            logger.debug(f"iCloud bağlantısı deneniyor (Deneme {attempt + 1}/{max_retries})...")
             api = PyiCloudService(apple_id, password)
-            print(f"Bağlantı başarılı. 2FA Gerekli: {api.requires_2fa}, 2SA Gerekli: {api.requires_2sa}")
+            logger.debug(f"Bağlantı başarılı. 2FA Gerekli: {api.requires_2fa}, 2SA Gerekli: {api.requires_2sa}")
             
             if api.requires_2fa or api.requires_2sa:
                 return redirect('icloud_2fa')
             
-            print("Medya dosyaları alınıyor...")
+            logger.debug("Medya dosyaları alınıyor...")
             photos = list(api.photos.all)[start_index:end_index]
             total_photos = len(api.photos.all)
-            print(f"{len(photos)} medya alındı (Sayfa {page}).")
+            logger.debug(f"{len(photos)} medya alındı (Sayfa {page}).")
             
             if request.method == 'POST' and 'photo_ids' in request.POST:
                 selected_photo_ids = request.POST.getlist('photo_ids')
@@ -85,8 +136,10 @@ def icloud_select_photos(request):
                                 photo_instance.save()
                             else:
                                 messages.warning(request, f"{photo.filename} indirilemedi.")
+                                logger.warning(f"Failed to download {photo.filename}: Status {response.status_code if response else 'No response'}")
                         except (ChunkedEncodingError, ConnectionError) as e:
                             messages.warning(request, f"{photo.filename} indirilirken bağlantı hatası: {str(e)}")
+                            logger.error(f"Connection error downloading {photo.filename}: {str(e)}")
                 messages.success(request, "Seçilen medya dosyaları eklendi.")
                 del request.session['icloud_credentials']
                 if '2fa_code' in request.session:
@@ -94,7 +147,7 @@ def icloud_select_photos(request):
                 return redirect('photo_list')
             
             photo_list = []
-            media_dir = 'media/thumbnails'
+            media_dir = os.path.join('media', 'thumbnails')
             os.makedirs(media_dir, exist_ok=True)
             
             for photo in photos:
@@ -115,56 +168,107 @@ def icloud_select_photos(request):
                 
                 if os.path.exists(thumb_path):
                     photo_data['thumbnail'] = f"/{thumb_path}"
+                    logger.debug(f"Using existing thumbnail for {photo.filename}: {thumb_path}")
                 else:
-                    try:
-                        if is_video:
-                            response = photo.download('original')
-                            if response and response.status_code == 200:
-                                temp_video_path = os.path.join(media_dir, f"temp_{photo.id}{os.path.splitext(photo.filename)[1]}")
-                                with open(temp_video_path, 'wb') as f:
-                                    f.write(response.content)
+                    for dl_attempt in range(download_retries):
+                        try:
+                            if is_video:
+                                # Download video to a temporary file
+                                response = photo.download('original')
+                                if not response or response.status_code != 200:
+                                    logger.warning(f"Video download failed for {photo.filename}: Status {response.status_code if response else 'No response'}")
+                                    if dl_attempt < download_retries - 1:
+                                        time.sleep(retry_delay)
+                                        continue
+                                    else:
+                                        raise ValueError("Video download failed after retries")
                                 
-                                clip = VideoFileClip(temp_video_path)
-                                frame = clip.get_frame(1)
+                                # Save video to temporary file
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
+                                    temp_file.write(response.content)
+                                    temp_file_path = temp_file.name
+                                
+                                # Generate thumbnail from video
+                                clip = VideoFileClip(temp_file_path)
+                                frame_time = min(1.0, clip.duration / 2)  # Take frame at 1s or midpoint
+                                frame = clip.get_frame(frame_time)
                                 clip.close()
                                 
+                                # Convert frame to PIL Image
                                 img = Image.fromarray(frame)
-                                img.thumbnail((100, 100))
-                                if img.mode in ('RGBA', 'P', 'LA'):
-                                    img = img.convert('RGB')
+                                img.thumbnail((100, 100), Image.Resampling.LANCZOS)
                                 thumb_io = io.BytesIO()
                                 img.save(thumb_io, format='JPEG', quality=70)
                                 thumb_io.seek(0)
-                                with open(thumb_path, 'wb') as f:
-                                    f.write(thumb_io.getvalue())
-                                photo_data['thumbnail'] = f"/{thumb_path}"
                                 
-                                os.remove(temp_video_path)
-                            else:
-                                print(f"Video indirilemedi: {photo.filename}")
-                        else:
-                            response = photo.download('thumb')
-                            if response and response.status_code == 200:
-                                img = Image.open(io.BytesIO(response.content))
-                                img.verify()
-                                img = Image.open(io.BytesIO(response.content))
-                                img.thumbnail((100, 100))
-                                if img.mode in ('RGBA', 'P', 'LA'):
-                                    img = img.convert('RGB')
-                                thumb_io = io.BytesIO()
-                                img.save(thumb_io, format='JPEG', quality=70)
-                                thumb_io.seek(0)
+                                # Save thumbnail
                                 with open(thumb_path, 'wb') as f:
                                     f.write(thumb_io.getvalue())
                                 photo_data['thumbnail'] = f"/{thumb_path}"
+                                logger.debug(f"Generated video thumbnail for {photo.filename}: {thumb_path}")
+                                
+                                # Clean up
+                                os.unlink(temp_file_path)
+                                break
                             else:
-                                print(f"Thumbnail indirilemedi: {photo.filename}")
-                    except (ChunkedEncodingError, ConnectionError, Image.UnidentifiedImageError, ValueError, OSError) as e:
-                        print(f"Hata: {photo.filename} ({'Video' if is_video else 'Fotoğraf'}) - {str(e)}")
+                                # Download thumbnail for PNG/HEIC
+                                response = photo.download('thumb')
+                                if not response or response.status_code != 200:
+                                    logger.warning(f"Thumbnail download failed for {photo.filename}: Status {response.status_code if response else 'No response'}")
+                                    if dl_attempt < download_retries - 1:
+                                        time.sleep(retry_delay)
+                                        continue
+                                    else:
+                                        raise ValueError("Thumbnail download failed after retries")
+                                
+                                # Process image
+                                img_data = response.content
+                                img = Image.open(io.BytesIO(img_data))
+                                img.verify()  # Verify image integrity
+                                img = Image.open(io.BytesIO(img_data))  # Re-open after verify
+                                
+                                # Handle various image modes
+                                if img.mode not in ('RGB', 'L'):
+                                    logger.debug(f"Converting image mode for {photo.filename}: {img.mode} to RGB")
+                                    img = img.convert('RGB')
+                                
+                                # Generate thumbnail
+                                img.thumbnail((100, 100), Image.Resampling.LANCZOS)
+                                thumb_io = io.BytesIO()
+                                img.save(thumb_io, format='JPEG', quality=70)
+                                thumb_io.seek(0)
+                                
+                                # Save thumbnail to disk
+                                with open(thumb_path, 'wb') as f:
+                                    f.write(thumb_io.getvalue())
+                                photo_data['thumbnail'] = f"/{thumb_path}"
+                                logger.debug(f"Generated thumbnail for {photo.filename}: {thumb_path}")
+                                break
+                        
+                        except (ChunkedEncodingError, ConnectionError) as e:
+                            logger.error(f"Connection error for {photo.filename} (Attempt {dl_attempt + 1}/{download_retries}): {str(e)}")
+                            if dl_attempt < download_retries - 1:
+                                time.sleep(retry_delay)
+                                continue
+                            photo_data['thumbnail'] = '/media/placeholder.jpg'
+                            logger.warning(f"Using placeholder for {photo.filename} due to connection error")
+                        
+                        except Image.UnidentifiedImageError as e:
+                            logger.error(f"Image format error for {photo.filename}: {str(e)}")
+                            photo_data['thumbnail'] = '/media/placeholder.jpg'
+                            logger.warning(f"Using placeholder for {photo.filename} due to invalid image format")
+                            break
+                        
+                        except Exception as e:
+                            logger.error(f"Unexpected error for {photo.filename}: {type(e).__name__}: {str(e)}")
+                            photo_data['thumbnail'] = '/media/placeholder.jpg'
+                            logger.warning(f"Using placeholder for {photo.filename} due to unexpected error")
+                            break
                 
                 if not photo_data['thumbnail']:
                     photo_data['thumbnail'] = '/media/placeholder.jpg'
                     messages.warning(request, f"{photo.filename} için thumbnail oluşturulamadı.")
+                    logger.warning(f"Using placeholder for {photo.filename} due to thumbnail generation failure")
                 
                 photo_list.append(photo_data)
             
@@ -179,89 +283,39 @@ def icloud_select_photos(request):
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 503:
                 if attempt < max_retries - 1:
-                    print(f"503 Hatası alındı, {retry_delay} saniye sonra tekrar denenecek...")
+                    logger.debug(f"503 Hatası alındı, {retry_delay} saniye sonra tekrar denenecek...")
                     time.sleep(retry_delay)
                     continue
                 else:
                     messages.error(request, "iCloud servisi şu anda kullanılamıyor (503). Lütfen daha sonra tekrar deneyin.")
                     del request.session['icloud_credentials']
+                    logger.error("iCloud service unavailable (503) after retries")
                     return redirect('icloud_login')
             else:
                 messages.error(request, f"iCloud bağlantı hatası: {str(e)}. Lütfen tekrar deneyin.")
                 del request.session['icloud_credentials']
+                logger.error(f"iCloud connection error: {str(e)}")
                 return redirect('icloud_login')
         except PyiCloudFailedLoginException as e:
             messages.error(request, f"iCloud giriş bilgileri hatalı: {str(e)}. Lütfen tekrar deneyin.")
             del request.session['icloud_credentials']
+            logger.error(f"iCloud login failed: {str(e)}")
             return redirect('icloud_login')
         except PyiCloudServiceNotActivatedException as e:
             messages.error(request, f"iCloud servisi aktif değil: {str(e)}. Lütfen https://icloud.com/ üzerinden oturum açarak servisi etkinleştirin.")
             del request.session['icloud_credentials']
+            logger.error(f"iCloud service not activated: {str(e)}")
             return redirect('icloud_login')
         except Exception as e:
             messages.error(request, f"Bir hata oluştu: {str(e)}. Lütfen tekrar deneyin.")
             del request.session['icloud_credentials']
+            logger.error(f"Unexpected error: {type(e).__name__}: {str(e)}")
             return redirect('icloud_login')
     
     messages.error(request, "iCloud servisine bağlanılamadı. Lütfen daha sonra tekrar deneyin.")
     del request.session['icloud_credentials']
+    logger.error("Failed to connect to iCloud after retries")
     return redirect('icloud_login')
-
-@login_required
-def icloud_2fa(request):
-    if 'icloud_credentials' not in request.session:
-        messages.error(request, "Lütfen iCloud hesabınızla giriş yapın.")
-        return redirect('icloud_login')
-    
-    apple_id = request.session['icloud_credentials']['apple_id']
-    password = request.session['icloud_credentials']['password']
-    
-    try:
-        api = PyiCloudService(apple_id, password)
-        print(f"Apple ID: {apple_id}, 2FA Gerekli: {api.requires_2fa}, 2SA Gerekli: {api.requires_2sa}")
-        
-        if not (api.requires_2fa or api.requires_2sa):
-            return redirect('icloud_select_photos')
-        
-        if request.method == 'POST' and '2fa_code' in request.POST:
-            code = request.POST.get('2fa_code').strip()
-            try:
-                if api.validate_2fa_code(code):
-                    request.session['2fa_code'] = code
-                    messages.success(request, "2FA doğrulama başarılı.")
-                    return redirect('icloud_select_photos')
-                else:
-                    messages.error(request, "Geçersiz 2FA kodu. Lütfen tekrar deneyin.")
-            except Exception as e:
-                messages.error(request, f"2FA kodu doğrulama hatası: {str(e)}")
-        else:
-            trusted_devices = api.trusted_devices
-            print(f"Güvenilir Cihazlar: {trusted_devices}")
-            if not trusted_devices:
-                messages.warning(request, "Güvenilir cihaz bulunamadı, ancak doğrulama kodu gönderilmiş olabilir. Lütfen cihazınıza gelen kodu girin.")
-            else:
-                device = trusted_devices[0]
-                try:
-                    api.send_verification_code(device)
-                    messages.info(request, f"Doğrulama kodu {device.get('deviceName', 'cihazınıza')} gönderildi.")
-                except Exception as e:
-                    messages.error(request, f"Doğrulama kodu gönderilemedi: {str(e)}")
-                    messages.warning(request, "Kod gönderilemedi, ancak cihazınıza gelen bir kodu girebilirsiniz.")
-        
-        return render(request, 'photos/icloud_2fa.html', {})
-    
-    except PyiCloudFailedLoginException as e:
-        messages.error(request, f"iCloud giriş bilgileri hatalı: {str(e)}. Lütfen tekrar deneyin.")
-        del request.session['icloud_credentials']
-        return redirect('icloud_login')
-    except PyiCloudServiceNotActivatedException as e:
-        messages.error(request, f"iCloud servisi aktif değil: {str(e)}. Lütfen https://icloud.com/ üzerinden oturum açarak servisi etkinleştirin.")
-        del request.session['icloud_credentials']
-        return redirect('icloud_login')
-    except Exception as e:
-        messages.error(request, f"Bir hata oluştu: {str(e)}. Lütfen tekrar deneyin.")
-        del request.session['icloud_credentials']
-        return redirect('icloud_login')
 
 @login_required
 def upload_photo(request):
@@ -282,28 +336,60 @@ def delete_photos(request):
     if request.method == 'POST':
         photo_ids = request.POST.getlist('photo_ids')
         if photo_ids:
-            Photo.objects.filter(id__in=photo_ids, user=request.user).delete()
-            messages.success(request, "Seçilen fotoğraflar silindi.")
+            photos = Photo.objects.filter(id__in=photo_ids, user=request.user)
+            for photo in photos:
+                if os.path.exists(photo.image.path):
+                    os.remove(photo.image.path)
+                photo.delete()
+            messages.success(request, f"{len(photos)} fotoğraf silindi.")
         else:
-            messages.warning(request, "Silmek için fotoğraf seçmediniz.")
-        return redirect('photo_list')
+            messages.warning(request, "Lütfen silmek için en az bir fotoğraf seçin.")
     return redirect('photo_list')
 
 @login_required
 def delete_all_photos(request):
-    if request.method == 'POST' or request.method == 'GET':
-        Photo.objects.filter(user=request.user).delete()
+    if request.method == 'POST':
+        photos = Photo.objects.filter(user=request.user)
+        for photo in photos:
+            if os.path.exists(photo.image.path):
+                os.remove(photo.image.path)
+            photo.delete()
         messages.success(request, "Tüm fotoğraflar silindi.")
-        return redirect('photo_list')
     return redirect('photo_list')
 
 @login_required
 def delete_account(request):
     if request.method == 'POST':
-        Photo.objects.filter(user=request.user).delete()
         user = request.user
-        logout(request)
+        photos = Photo.objects.filter(user=user)
+        for photo in photos:
+            if os.path.exists(photo.image.path):
+                os.remove(photo.image.path)
+            photo.delete()
         user.delete()
-        messages.success(request, "Hesabınız başarıyla silindi.")
+        messages.success(request, "Hesabınız ve tüm fotoğraflarınız silindi.")
         return redirect('photo_list')
-    return render(request, 'photos/confirm_delete_account.html', {})
+    return render(request, 'photos/confirm_delete_account.html')
+
+@login_required
+def download_photo(request, photo_id):
+    photo = get_object_or_404(Photo, id=photo_id, user=request.user)
+    file_path = photo.image.path
+    
+    if not os.path.exists(file_path):
+        logger.error(f"File not found for download: {file_path}")
+        messages.error(request, f"Dosya bulunamadı: {photo.image.name}")
+        return redirect('photo_list')
+    
+    try:
+        file_handle = open(file_path, 'rb')
+        response = FileResponse(file_handle, content_type='application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+        logger.debug(f"Downloading file: {file_path} for user: {request.user.username}")
+        return response
+    except Exception as e:
+        logger.error(f"Error downloading file {file_path}: {str(e)}")
+        messages.error(request, f"Dosya indirilemedi: {str(e)}")
+        if 'file_handle' in locals():
+            file_handle.close()
+        return redirect('photo_list')
