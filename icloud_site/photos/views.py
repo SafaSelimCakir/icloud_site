@@ -7,6 +7,7 @@ from .forms import ICloudLoginForm, PhotoUploadForm
 from pyicloud import PyiCloudService
 from pyicloud.exceptions import PyiCloudFailedLoginException, PyiCloudServiceNotActivatedException
 from django.core.files.base import ContentFile
+from django.contrib.auth import login, authenticate
 from PIL import Image
 from pillow_heif import register_heif_opener
 import os
@@ -18,10 +19,28 @@ import requests
 from requests.exceptions import ChunkedEncodingError
 from moviepy import VideoFileClip
 import tempfile
+from .forms import SignUpForm
 
 logger = logging.getLogger(__name__)
 
 register_heif_opener()
+
+def sign_up(request):
+    if request.method == 'POST':
+        form = SignUpForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            messages.success(request, f"Hesabınız oluşturuldu, {user.username}!")
+            logger.debug(f"New user registered: {user.username}")
+            return redirect('photo_list')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field}: {error}")
+    else:
+        form = SignUpForm()
+    return render(request, 'photos/sign_up.html', {'form': form})
 
 @login_required
 def photo_list(request):
@@ -36,7 +55,7 @@ def icloud_login(request):
             apple_id = form.cleaned_data['apple_id']
             password = form.cleaned_data['password']
             request.session['icloud_credentials'] = {'apple_id': apple_id, 'password': password}
-            return redirect('icloud_select_photos')
+            return redirect('photos:icloud_select_photos') 
     else:
         form = ICloudLoginForm()
     return render(request, 'photos/icloud_login.html', {'form': form})
@@ -393,3 +412,11 @@ def download_photo(request, photo_id):
         if 'file_handle' in locals():
             file_handle.close()
         return redirect('photo_list')
+    
+@login_required
+def play_video(request, photo_id):
+    photo = get_object_or_404(Photo, id=photo_id, user=request.user)
+    if not photo.is_video:
+        messages.error(request, "Bu dosya bir video değil.")
+        return redirect('photos:photo_list')
+    return render(request, 'photos/play_video.html', {'photo': photo})

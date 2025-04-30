@@ -1,0 +1,18 @@
+{% extends 'photos/base.html' %}
+{% block content %}
+    <h2>{{ photo.image.name }} - Video Oynatma</h2>
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    <video width="640" height="360" controls>
+        <source src="{{ photo.image.url }}" type="video/mp4">
+        Tarayıcınız bu videoyu oynatmayı desteklemiyor.
+    </video>
+    <br>
+    <a href="{% url 'photos:photo_list' %}" class="btn btn-primary">Geri Dön</a>
+    <a href="{% url 'photos:download_photo' photo.id %}" class="btn btn-primary">Videoyu İndir</a>
+{% endblock %}
