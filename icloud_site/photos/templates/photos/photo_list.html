@@ -1,5 +1,6 @@
 {% extends 'photos/base.html' %}
 {% block content %}
+<<<<<<< HEAD
 
 <style>
   .photo-container {
@@ -96,3 +97,63 @@
 </script>
 
 {% endblock %}
+=======
+    <h2>Fotoğraflarınız</h2>
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    {% if user.is_authenticated %}
+        {% if photos %}
+            <form method="post" action="{% url 'photos:delete_photos' %}">
+                {% csrf_token %}
+                <table>
+                    <tr>
+                        <th>Seç</th>
+                        <th>Önizleme</th>
+                        <th>Dosya Adı</th>
+                        <th>İşlemler</th>
+                    </tr>
+                    {% for photo in photos %}
+                        <tr>
+                            <td><input type="checkbox" name="photo_ids" value="{{ photo.id }}"></td>
+                            <td>
+                                {% if photo.is_video %}
+                                    <video width="100" height="100" controls preload="none">
+                                        <source src="{{ photo.image.url }}" type="video/mp4">
+                                        Tarayıcınız bu videoyu oynatmayı desteklemiyor.
+                                    </video>
+                                {% else %}
+                                    <img src="{{ photo.image.url }}" alt="{{ photo.image.name }}" style="max-width: 100px; max-height: 100px;">
+                                {% endif %}
+                            </td>
+                            <td>{{ photo.image.name }}</td>
+                            <td>
+                                <a href="{% url 'photos:download_photo' photo.id %}" class="btn btn-primary">İndir</a>
+                                {% if photo.is_video %}
+                                    <a href="{% url 'photos:play_video' photo.id %}" class="btn btn-success">Oynat</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+                <button type="submit" class="btn btn-danger">Seçilenleri Sil</button>
+                <a href="{% url 'photos:delete_all_photos' %}" class="btn btn-danger">Tüm Fotoğrafları Sil</a>
+                <a href="{% url 'photos:delete_account' %}" class="btn btn-danger">Hesabı Sil</a>
+            </form>
+        {% else %}
+            <p>Henüz fotoğraf yüklemediniz.</p>
+        {% endif %}
+        <a href="{% url 'photos:icloud_login' %}" class="btn btn-primary">iCloud'dan Fotoğraf Yükle</a>
+        <a href="{% url 'photos:upload_photo' %}" class="btn btn-primary">Fotoğraf Yükle</a>
+        <a href="{% url 'photos:logout' %}" class="btn btn-secondary">Çıkış Yap</a>
+    {% else %}
+        <p>Lütfen giriş yapın veya kayıt olun.</p>
+        <a href="{% url 'photos:login' %}" class="btn btn-primary">Giriş Yap</a>
+        <a href="{% url 'photos:sign_up' %}" class="btn btn-primary">Kayıt Ol</a>
+    {% endif %}
+{% endblock %}
+>>>>>>> 84f6ae9fa447953beb100393ebd56c6a60aaa695
