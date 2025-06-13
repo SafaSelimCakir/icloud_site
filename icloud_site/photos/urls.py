@@ -11,4 +11,6 @@ urlpatterns = [
     path('delete-all/', views.delete_all_photos, name='delete_all_photos'),
     path('delete-account/', views.delete_account, name='delete_account'),
     path('download/<int:photo_id>/', views.download_photo, name='download_photo'),
+    
+
 ]

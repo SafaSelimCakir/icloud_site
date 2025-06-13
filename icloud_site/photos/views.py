@@ -18,6 +18,8 @@ import requests
 from requests.exceptions import ChunkedEncodingError
 from moviepy import VideoFileClip
 import tempfile
+from django.views.decorators.http import require_GET
+
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +103,9 @@ def icloud_select_photos(request):
     password = request.session['icloud_credentials']['password']
     
     max_retries = 3
-    retry_delay = 5  # seconds
-    photos_per_page = 20  # Media items per page
-    download_retries = 2  # Retry attempts for thumbnail downloads
+    retry_delay = 5  
+    photos_per_page = 20  
+    download_retries = 2  
     
     page = int(request.GET.get('page', 1))
     start_index = (page - 1) * photos_per_page
@@ -173,7 +175,6 @@ def icloud_select_photos(request):
                     for dl_attempt in range(download_retries):
                         try:
                             if is_video:
-                                # Download video to a temporary file
                                 response = photo.download('original')
                                 if not response or response.status_code != 200:
                                     logger.warning(f"Video download failed for {photo.filename}: Status {response.status_code if response else 'No response'}")
@@ -183,35 +184,29 @@ def icloud_select_photos(request):
                                     else:
                                         raise ValueError("Video download failed after retries")
                                 
-                                # Save video to temporary file
                                 with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
                                     temp_file.write(response.content)
                                     temp_file_path = temp_file.name
                                 
-                                # Generate thumbnail from video
                                 clip = VideoFileClip(temp_file_path)
-                                frame_time = min(1.0, clip.duration / 2)  # Take frame at 1s or midpoint
+                                frame_time = min(1.0, clip.duration / 2)  
                                 frame = clip.get_frame(frame_time)
                                 clip.close()
                                 
-                                # Convert frame to PIL Image
                                 img = Image.fromarray(frame)
                                 img.thumbnail((100, 100), Image.Resampling.LANCZOS)
                                 thumb_io = io.BytesIO()
                                 img.save(thumb_io, format='JPEG', quality=70)
                                 thumb_io.seek(0)
                                 
-                                # Save thumbnail
                                 with open(thumb_path, 'wb') as f:
                                     f.write(thumb_io.getvalue())
                                 photo_data['thumbnail'] = f"/{thumb_path}"
                                 logger.debug(f"Generated video thumbnail for {photo.filename}: {thumb_path}")
                                 
-                                # Clean up
                                 os.unlink(temp_file_path)
                                 break
                             else:
-                                # Download thumbnail for PNG/HEIC
                                 response = photo.download('thumb')
                                 if not response or response.status_code != 200:
                                     logger.warning(f"Thumbnail download failed for {photo.filename}: Status {response.status_code if response else 'No response'}")
@@ -221,24 +216,20 @@ def icloud_select_photos(request):
                                     else:
                                         raise ValueError("Thumbnail download failed after retries")
                                 
-                                # Process image
                                 img_data = response.content
                                 img = Image.open(io.BytesIO(img_data))
-                                img.verify()  # Verify image integrity
-                                img = Image.open(io.BytesIO(img_data))  # Re-open after verify
+                                img.verify()  
+                                img = Image.open(io.BytesIO(img_data))  
                                 
-                                # Handle various image modes
                                 if img.mode not in ('RGB', 'L'):
                                     logger.debug(f"Converting image mode for {photo.filename}: {img.mode} to RGB")
                                     img = img.convert('RGB')
                                 
-                                # Generate thumbnail
                                 img.thumbnail((100, 100), Image.Resampling.LANCZOS)
                                 thumb_io = io.BytesIO()
                                 img.save(thumb_io, format='JPEG', quality=70)
                                 thumb_io.seek(0)
                                 
-                                # Save thumbnail to disk
                                 with open(thumb_path, 'wb') as f:
                                     f.write(thumb_io.getvalue())
                                 photo_data['thumbnail'] = f"/{thumb_path}"
@@ -334,17 +325,14 @@ def upload_photo(request):
 @login_required
 def delete_photos(request):
     if request.method == 'POST':
-        photo_ids = request.POST.getlist('photo_ids')
-        if photo_ids:
-            photos = Photo.objects.filter(id__in=photo_ids, user=request.user)
-            for photo in photos:
-                if os.path.exists(photo.image.path):
-                    os.remove(photo.image.path)
-                photo.delete()
-            messages.success(request, f"{len(photos)} fotoğraf silindi.")
+        ids = request.POST.getlist('photo_ids')
+        if not ids:
+            messages.error(request, 'Lütfen silmek için en az bir fotoğraf seçin.')
         else:
-            messages.warning(request, "Lütfen silmek için en az bir fotoğraf seçin.")
-    return redirect('photo_list')
+            Photo.objects.filter(id__in=ids).delete()
+            messages.success(request, f'{len(ids)} fotoğraf silindi.')
+    return redirect('photo_list') 
+
 
 @login_required
 def delete_all_photos(request):
@@ -393,3 +381,6 @@ def download_photo(request, photo_id):
         if 'file_handle' in locals():
             file_handle.close()
         return redirect('photo_list')
+    
+
+

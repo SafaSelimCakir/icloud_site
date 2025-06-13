@@ -8,3 +8,7 @@ class Photo(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s photo"
+    
+    @property
+    def is_video(self):
+        return self.image.name.lower().endswith(('.mp4', '.mov', '.webm'))

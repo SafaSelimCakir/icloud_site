@@ -2,60 +2,147 @@
 <html>
 <head>
     <style>
-        .success { color: green; }
-        .warning { color: red; }
-        .photo-container { display: flex; flex-wrap: wrap; gap: 10px; }
-        .photo-item { text-align: center; }
-        img { max-width: 100px; max-height: 100px; object-fit: cover; }
-        .video-icon { color: blue; font-weight: bold; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .warning {
+            color: red;
+        }
+
+        .photo-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .photo-item {
+            position: relative;
+            width: calc(25% - 20px);
+            border: 3px solid transparent;
+            border-radius: 6px;
+            overflow: hidden;
+            transition: border 0.2s;
+            cursor: pointer;
+        }
+
+        .photo-item input[type="checkbox"] {
+            display: none;
+        }
+
+        .photo-item.selected {
+            border: 3px solid #007bff;
+        }
+
+        .photo-item img {
+            width: auto;
+            height: auto;
+            display: block;
+        }
+
+        .photo-caption {
+            padding: 5px;
+            text-align: center;
+        }
+
+        .video-icon {
+            color: #007bff;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .pagination {
+            margin-top: 20px;
+        }
+
+        .pagination a {
+            margin: 0 10px;
+            text-decoration: none;
+        }
+
+        .btn-submit {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .btn-submit:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
     <h1>iCloud Medya Dosyaları</h1>
+
     {% if messages %}
         {% for message in messages %}
             <p class="{% if 'success' in message.tags %}success{% else %}warning{% endif %}">{{ message }}</p>
         {% endfor %}
     {% endif %}
+
     <p>Toplam {{ total_photos }} medya dosyası bulundu.</p>
+
     <form method="post">
         {% csrf_token %}
         <div class="photo-container">
             {% for photo in photos %}
-                <div class="photo-item">
+                <label class="photo-item">
                     <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
+                    
                     {% if photo.thumbnail %}
                         <img src="{{ photo.thumbnail }}" alt="{{ photo.filename }}" loading="lazy">
                     {% else %}
-                        <p>Thumbnail yüklenemedi</p>
+                        <div style="padding: 40px; text-align: center;">Thumbnail yüklenemedi</div>
                     {% endif %}
-                    <p>
+
+                    <div class="photo-caption">
                         {% if photo.is_video %}
                             <span class="video-icon">[Video]</span>
                         {% endif %}
-                        {{ photo.filename }}
-                    </p>
-                </div>
+                        
+                    </div>
+                </label>
             {% empty %}
                 <p>Bu sayfada medya dosyası bulunamadı.</p>
             {% endfor %}
         </div>
+
         {% if photos %}
-            <button type="submit">Seçilenleri Ekle</button>
+            <button type="submit" class="btn-submit">Seçilenleri Ekle</button>
         {% endif %}
     </form>
-    
-    <!-- Sayfalı yükleme bağlantıları -->
-    <div>
+
+    <div class="pagination">
         {% if current_page > 1 %}
-            <a href="?page={{ current_page|add:-1 }}">Önceki Sayfa</a>
+            <a href="?page={{ current_page|add:-1 }}">← Önceki Sayfa</a>
         {% endif %}
         <span>Sayfa {{ current_page }} / {{ total_pages }}</span>
         {% if current_page < total_pages %}
-            <a href="?page={{ current_page|add:1 }}">Sonraki Sayfa</a>
+            <a href="?page={{ current_page|add:1 }}">Sonraki Sayfa →</a>
         {% endif %}
     </div>
-    
-    <a href="{% url 'photo_list' %}">Geri Dön</a>
+
+    <div style="margin-top: 20px;">
+        <a href="{% url 'photo_list' %}">← Geri Dön</a>
+    </div>
+
+    <script>
+        document.querySelectorAll('.photo-item').forEach(container => {
+            container.addEventListener('click', function (e) {
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                checkbox.checked = !checkbox.checked;
+                this.classList.toggle('selected', checkbox.checked);
+            });
+        });
+    </script>
 </body>
 </html>

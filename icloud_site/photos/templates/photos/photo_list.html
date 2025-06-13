@@ -1,41 +1,98 @@
 {% extends 'photos/base.html' %}
 {% block content %}
-    <h2>Fotoğraflarınız</h2>
-    {% if messages %}
-        <ul class="messages">
-            {% for message in messages %}
-                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-            {% endfor %}
-        </ul>
-    {% endif %}
-    {% if photos %}
-        <form method="post" action="{% url 'delete_photos' %}">
-            {% csrf_token %}
-            <table>
-                <tr>
-                    <th>Seç</th>
-                    <th>Önizleme</th>
-                    <th>Dosya Adı</th>
-                    <th>İşlemler</th>
-                </tr>
-                {% for photo in photos %}
-                    <tr>
-                        <td><input type="checkbox" name="photo_ids" value="{{ photo.id }}"></td>
-                        <td><img src="{{ photo.image.url }}" alt="{{ photo.image.name }}" style="max-width: 100px; max-height: 100px;"></td>
-                        <td>{{ photo.image.name }}</td>
-                        <td>
-                            <a href="{% url 'download_photo' photo.id %}" class="btn btn-primary">İndir</a>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </table>
-            <button type="submit" class="btn btn-danger">Seçilenleri Sil</button>
-            <a href="{% url 'delete_all_photos' %}" class="btn btn-danger">Tüm Fotoğrafları Sil</a>
-            <a href="{% url 'delete_account' %}" class="btn btn-danger">Hesabı Sil</a>
-        </form>
-    {% else %}
-        <p>Henüz fotoğraf yüklemediniz.</p>
-    {% endif %}
-    <a href="{% url 'icloud_login' %}" class="btn btn-primary">iCloud'dan Fotoğraf Yükle</a>
-    <a href="{% url 'upload_photo' %}" class="btn btn-primary">Fotoğraf Yükle</a>
+
+<style>
+  .photo-container {
+    position: relative;
+    cursor: pointer;
+    border: 3px solid transparent;
+    border-radius: 5px;
+    overflow: hidden;
+    transition: border 0.2s;
+  }
+
+  .photo-container.selected {
+    border: 3px solid #007bff;
+  }
+
+  .photo-container img,
+  .photo-container video {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .photo-container input[type="checkbox"] {
+    display: none;
+  }
+
+  .download-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    z-index: 10;
+  }
+</style>
+
+<main class="container mt-4">
+  {% if messages %}
+    <div class="messages">
+      {% for message in messages %}
+        <div class="alert alert-warning">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form id="photoForm" method="post" action="{% url 'delete_photos' %}">
+    {% csrf_token %}
+    <div class="row">
+      {% for photo in photos %}
+        <div class="col-6 col-sm-4 col-md-3 mb-4">
+          <label class="photo-container d-block">
+            <input type="checkbox" name="photo_ids" value="{{ photo.id }}">
+
+            {% if photo.is_video %}
+            <video controls muted>
+                <source src="{{ photo.image.url }}" type="video/mp4">
+            </video>
+            {% else %}
+            <img src="{{ photo.image.url }}" alt="photo">
+            {% endif %}
+
+
+            <a href="{% url 'download_photo' photo.id %}" class="btn btn-sm btn-primary download-btn">İndir</a>
+          </label>
+        </div>
+      {% endfor %}
+    </div>
+  </form>
+</main>
+
+<script>
+  document.querySelectorAll('.photo-container').forEach(container => {
+    container.addEventListener('click', function (e) {
+      if (e.target.tagName.toLowerCase() === 'a') return;
+
+      if (e.target.tagName.toLowerCase() === 'video') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      const checkbox = this.querySelector('input[type="checkbox"]');
+      checkbox.checked = !checkbox.checked;
+      this.classList.toggle('selected', checkbox.checked);
+    });
+  });
+
+
+  function submitPhotoForm() {
+    const form = document.getElementById("photoForm");
+    if (form) {
+      form.submit();
+    } else {
+      alert("Form bulunamadı.");
+    }
+  }
+</script>
+
 {% endblock %}
